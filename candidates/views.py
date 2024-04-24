@@ -60,15 +60,16 @@ class CandidateNameSearchView(generics.ListAPIView):
         if not query:
             return Candidate.objects.none()
 
-        query_words = query.split()
+        query_words = set(query.split())
         queryset = Candidate.objects.annotate(
             relevance=Case(
                 # exact match gets highest relevance
-                When(name__iexact=query, then=Value(3)),
-                # partial match with all words gets higher relevance
-                When(reduce(lambda x, y: x & y, [Q(name__icontains=word) for word in query_words]), then=Value(2)),
-                # partial match with some words gets lower relevance
-                When(reduce(lambda x, y: x | y, [Q(name__icontains=word) for word in query_words]), then=Value(1)),
+                When(name__iexact=query, then=Value(len(query_words) * 2)),
+                # partial match with all words gets relevance based on number of words
+                When(reduce(lambda x, y: x & y, [Q(name__icontains=word) for word in query_words]), then=Value(len(query_words))),
+                # partial match with some words gets relevance based on number of overlapping words
+                When(reduce(lambda x, y: x | Q(name__icontains=y), query_words, Q()), then=Value(len(set(query_words) & set(query.split())) - 1)),
+                # no overlapping words, relevance is 0
                 default=Value(0),
                 output_field=IntegerField()
             )
